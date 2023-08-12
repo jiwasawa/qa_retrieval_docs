@@ -18,16 +18,16 @@ from dotenv import load_dotenv, find_dotenv
 _ = load_dotenv(find_dotenv()) # read local .env file
 
 
-def load_youtube(url: str, save_dir="docs/youtube/"):
+def load_youtube(url: str, openai_api_key: str, save_dir="docs/youtube/"):
     loader = GenericLoader(
         YoutubeAudioLoader([url], save_dir),
-        OpenAIWhisperParser()
+        OpenAIWhisperParser(api_key=openai_api_key)
     )
     docs = loader.load()
     return docs
 
 
-def summarize_doc(docs):
+def summarize_doc(docs, openai_api_key):
     llm = ChatOpenAI(temperature=0, model_name="gpt-3.5-turbo-16k", openai_api_key=openai_api_key)
     try:
         chain = load_summarize_chain(llm, chain_type="stuff")
@@ -38,7 +38,7 @@ def summarize_doc(docs):
     return summary
 
 
-def create_vectordb_for_docs(docs, db="qdrant"):
+def create_vectordb_for_docs(docs, openai_api_key, db="qdrant"):
     embedding = OpenAIEmbeddings(openai_api_key=openai_api_key)
     text_splitter = RecursiveCharacterTextSplitter(
         chunk_size = 1500,
@@ -63,7 +63,7 @@ def create_vectordb_for_docs(docs, db="qdrant"):
     return vectordb
 
 
-def init_llm():
+def init_llm(openai_api_key):
     current_date = datetime.datetime.now().date()
     if current_date < datetime.date(2023, 9, 2):
         llm_name = "gpt-3.5-turbo-0301"
@@ -86,10 +86,9 @@ with st.form('myform', clear_on_submit=True):
     submitted = st.form_submit_button('Submit', disabled=not(url and question and openai_api_key))
     if submitted:
         with st.spinner('Transcribing... This might take a few minutes.'):
-            docs = load_youtube(url)
-            llm = init_llm()  # init gpt-3.5-turbo
-            print(len(docs))
-            vectordb = create_vectordb_for_docs(docs)
+            docs = load_youtube(url, openai_api_key)
+            llm = init_llm(openai_api_key)  # init gpt-3.5-turbo
+            vectordb = create_vectordb_for_docs(docs, openai_api_key)
             retriever=vectordb.as_retriever()
             memory = ConversationBufferMemory(
                 memory_key="chat_history",
@@ -102,5 +101,7 @@ with st.form('myform', clear_on_submit=True):
             )
             response = qa({"question": question})
             result.append(response)
+            #summary = summarize_doc(docs, openai_api_key)
 if len(result):
     st.info(response["answer"])
+    #st.info(summary)
