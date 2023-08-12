@@ -4,3 +4,4 @@ python-dotenv==1.0.0
 streamlit==1.25.0
 qdrant-client==1.4.0
 tiktoken==0.4.0
+yt-dlp==2023.7.6
