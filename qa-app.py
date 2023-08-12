@@ -85,9 +85,10 @@ result = []
 with st.form('myform', clear_on_submit=True):
     submitted = st.form_submit_button('Submit', disabled=not(url and question and openai_api_key))
     if submitted:
-        with st.spinner('Transcribing...'):
+        with st.spinner('Transcribing... This might take a few minutes.'):
             docs = load_youtube(url)
             llm = init_llm()  # init gpt-3.5-turbo
+            print(len(docs))
             vectordb = create_vectordb_for_docs(docs)
             retriever=vectordb.as_retriever()
             memory = ConversationBufferMemory(
