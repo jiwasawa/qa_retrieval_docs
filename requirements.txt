@@ -5,4 +5,4 @@ streamlit==1.25.0
 qdrant-client==1.4.0
 tiktoken==0.4.0
 yt-dlp==2023.7.6
-ffmpeg-python
+pydub==0.25.1
