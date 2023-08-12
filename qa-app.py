@@ -17,8 +17,6 @@ from langchain.vectorstores import Chroma, Qdrant
 from dotenv import load_dotenv, find_dotenv
 _ = load_dotenv(find_dotenv()) # read local .env file
 
-openai.api_key  = os.environ['OPENAI_API_KEY']
-
 
 def load_youtube(url: str, save_dir="docs/youtube/"):
     loader = GenericLoader(
@@ -30,7 +28,7 @@ def load_youtube(url: str, save_dir="docs/youtube/"):
 
 
 def summarize_doc(docs):
-    llm = ChatOpenAI(temperature=0, model_name="gpt-3.5-turbo-16k")
+    llm = ChatOpenAI(temperature=0, model_name="gpt-3.5-turbo-16k", openai_api_key=openai_api_key)
     try:
         chain = load_summarize_chain(llm, chain_type="stuff")
         summary = chain.run(docs)
@@ -41,7 +39,7 @@ def summarize_doc(docs):
 
 
 def create_vectordb_for_docs(docs, db="qdrant"):
-    embedding = OpenAIEmbeddings()
+    embedding = OpenAIEmbeddings(openai_api_key=openai_api_key)
     text_splitter = RecursiveCharacterTextSplitter(
         chunk_size = 1500,
         chunk_overlap = 150
@@ -71,7 +69,7 @@ def init_llm():
         llm_name = "gpt-3.5-turbo-0301"
     else:
         llm_name = "gpt-3.5-turbo"
-    llm = ChatOpenAI(model_name=llm_name, temperature=0)
+    llm = ChatOpenAI(model_name=llm_name, temperature=0, openai_api_key=openai_api_key)
     return llm
 
 
@@ -81,10 +79,11 @@ st.title("QA youtube transcription")
 
 url = st.text_input("Enter YouTube url:", placeholder="https://www.youtube.com/watch?v=nM_3d37lmcM")
 question = st.text_input("Enter your question:", placeholder="What does Schulman think is important for the future of ChatGPT?", disabled=not url)
+openai_api_key = st.text_input('OpenAI API Key', type='password')
 
 result = []
 with st.form('myform', clear_on_submit=True):
-    submitted = st.form_submit_button('Submit', disabled=not(url and question))
+    submitted = st.form_submit_button('Submit', disabled=not(url and question and openai_api_key))
     if submitted:
         with st.spinner('Transcribing...'):
             docs = load_youtube(url)
