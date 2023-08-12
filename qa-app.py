@@ -85,24 +85,24 @@ result = []
 with st.form('myform', clear_on_submit=True):
     submitted = st.form_submit_button('Submit', disabled=not(url and question and openai_api_key))
     if submitted:
-        with st.spinner('Transcribing... This might take a few minutes.'):
-            openai.api_key = openai_api_key
+        openai.api_key = openai_api_key
+        with st.spinner("Downloading & transcribing the video... This might take a few minutes."):
             docs = load_youtube(url)
-            llm = init_llm(openai_api_key)  # init gpt-3.5-turbo
-            vectordb = create_vectordb_for_docs(docs, openai_api_key)
-            retriever=vectordb.as_retriever()
-            memory = ConversationBufferMemory(
-                memory_key="chat_history",
-                return_messages=True
-            )
-            qa = ConversationalRetrievalChain.from_llm(
-                llm,
-                retriever=retriever,
-                memory=memory,
-            )
-            response = qa({"question": question})
-            result.append(response)
-            #summary = summarize_doc(docs, openai_api_key)
+            #llm = init_llm(openai_api_key)  # init gpt-3.5-turbo
+            #vectordb = create_vectordb_for_docs(docs, openai_api_key)
+            #retriever=vectordb.as_retriever()
+            #memory = ConversationBufferMemory(
+            #    memory_key="chat_history",
+            #    return_messages=True
+            #)
+            #qa = ConversationalRetrievalChain.from_llm(
+            #    llm,
+            #    retriever=retriever,
+            #    memory=memory,
+            #)
+            #response = qa({"question": question})
+            #result.append(response)
+            summary = summarize_doc(docs, openai_api_key)
 if len(result):
-    st.info(response["answer"])
-    #st.info(summary)
+    #st.info(response["answer"])
+    st.info(summary)
