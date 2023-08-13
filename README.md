@@ -1,1 +1,1 @@
-# QA retrieval for YouTube/PDFs
+# QA retrieval for YouTube videos / PDFs
