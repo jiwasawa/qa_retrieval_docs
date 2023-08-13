@@ -4,6 +4,8 @@
 
 This repository provides a langchain/streamlit based app for question/answering for uploaded documents.
 
+<img src="img/app_layout.png" alt="app layout" width="400"/>
+
 ## Preparation
 
 ```bash
