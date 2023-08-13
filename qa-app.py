@@ -5,9 +5,8 @@ import streamlit as st
 import tempfile
 import uuid
 
-from openai.error import InvalidRequestError
 from langchain.chains.summarize import load_summarize_chain
-from langchain.chains import ConversationalRetrievalChain
+from langchain.chains import ConversationalRetrievalChain, RetrievalQA
 from langchain.chat_models import ChatOpenAI
 from langchain.document_loaders import PyPDFLoader
 from langchain.document_loaders.generic import GenericLoader
@@ -15,8 +14,12 @@ from langchain.document_loaders.parsers import OpenAIWhisperParser
 from langchain.document_loaders.blob_loaders.youtube_audio import YoutubeAudioLoader
 from langchain.embeddings.openai import OpenAIEmbeddings
 from langchain.memory import ConversationBufferMemory
+from langchain.prompts import PromptTemplate
+from langchain.retrievers import ContextualCompressionRetriever
+from langchain.retrievers.document_compressors import EmbeddingsFilter
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.vectorstores import Chroma, Qdrant
+from openai.error import InvalidRequestError
 
 from dotenv import load_dotenv, find_dotenv
 _ = load_dotenv(find_dotenv()) # read local .env file
@@ -70,7 +73,7 @@ def create_vectordb_for_docs(docs, openai_api_key, dir_name, db="qdrant"):
         )
     else:
         return
-    return vectordb
+    return vectordb, embedding
 
 
 def init_llm(openai_api_key):
@@ -83,40 +86,46 @@ def init_llm(openai_api_key):
     return llm
 
 
-def init_qa_retriever(docs, openai_api_key):
+def init_qa_retriever(docs, openai_api_key, use_compression=True, use_memory=False):
     llm = init_llm(openai_api_key)  # init gpt-3.5-turbo
     dir_name = os.path.splitext(
         os.path.basename(docs[0].metadata["source"])
     )[0].replace(" ", "_")  # use filename as directory name
-    vectordb = create_vectordb_for_docs(docs, openai_api_key, dir_name)
-    retriever=vectordb.as_retriever(search_type="mmr")
-    memory = ConversationBufferMemory(
-        memory_key="chat_history",
-        return_messages=True
-    )
-    qa = ConversationalRetrievalChain.from_llm(
-        llm,
-        retriever=retriever,
-        memory=memory,
-    )
+    vectordb, embedding = create_vectordb_for_docs(docs, openai_api_key, dir_name)
+    if use_compression:
+        compressor = EmbeddingsFilter(embeddings=embedding, similarity_threshold=0.5)
+        retriever = ContextualCompressionRetriever(
+            base_compressor=compressor,
+            base_retriever=vectordb.as_retriever(search_type="mmr"),
+        )
+    else:
+        retriever=vectordb.as_retriever(search_type="mmr")
+    if use_memory:
+        memory = ConversationBufferMemory(
+            memory_key="chat_history",
+            return_messages=True
+        )
+        qa = ConversationalRetrievalChain.from_llm(
+            llm,
+            retriever=retriever,
+            memory=memory,
+        )
+    else:
+        template = """Use the following pieces of context to answer the question at the end. If you don't know the answer, just say that you don't know, don't try to make up an answer. Use three sentences maximum. Keep the answer as concise as possible. 
+        {context}
+        Question: {question}
+        Helpful Answer:"""
+        QA_CHAIN_PROMPT = PromptTemplate(
+            input_variables=["context", "question"],
+            template=template,
+        )
+        qa = RetrievalQA.from_chain_type(
+            llm,
+            retriever=retriever,
+            return_source_documents=False,
+            chain_type_kwargs={"prompt": QA_CHAIN_PROMPT},
+        )
     return qa, retriever
-
-
-def repeat_qa(qa):
-    q_x = st.text_input(
-        "Enter your question:",
-        placeholder="Is there any information about Y?",
-    )
-    with st.form("form_x", clear_on_submit=False):
-        q_submitted = st.form_submit_button("Submit", disabled=not q_x)
-        res = []
-        if q_submitted:
-            with st.spinner("Asking question"):
-                response_x = qa({"question": question})
-                res.append(response_x)
-        if len(res):
-            st.info(response_x["answer"])
-            repeat_qa(qa)  # StreamlitAPIException: Forms cannot be nested in other forms.
 
 
 st.set_page_config(page_title="QA_youtube_pdf")
@@ -131,8 +140,16 @@ spinner_msg = (
     "Downloading & transcribing the video... This might take a few minutes." 
     if url else "Processing pdf"
 )
-
+keys = {}
+USE_MEMORY = False
+if USE_MEMORY:
+    keys["question"] = "question"
+    keys["answer"] = "answer"
+else:
+    keys["question"] = "query"
+    keys["answer"] = "result"
 if "api_key" not in st.session_state:
+    # require OPENAI_API_KEY
     try:
         st.session_state.api_key = os.environ['OPENAI_API_KEY']
     except KeyError:
@@ -140,7 +157,7 @@ if "api_key" not in st.session_state:
 
 with st.form("upload_form", clear_on_submit=False):
     disable_cond = ("docs" in st.session_state) or not((url or pdf) and st.session_state.api_key)
-    submitted = st.form_submit_button("Preprocess document", disabled=disable_cond)
+    submitted = st.form_submit_button("Preprocess YouTube/PDF", disabled=disable_cond)
     summary_storage = []
     if submitted:
         openai.api_key = st.session_state.api_key
@@ -166,14 +183,14 @@ else:
             with st.spinner("Summarizing... (might take a few minutes)"):
                 st.session_state.summary = summarize_doc(st.session_state.docs, st.session_state.api_key)
             st.info(st.session_state.summary)
+
 if "responses" not in st.session_state:
-    #st.session_state.unique_ids = []
     st.session_state.responses = []
     st.session_state.sources = []
 else:
     for response in st.session_state.responses:
-        st.info("Q. " + response["question"])
-        st.info("A. " + response["answer"])
+        st.info("Q. " + response[keys["question"] ])
+        st.info("A. " + response[keys["answer"] ])
 
 question = st.text_input(
     "Enter your question:",
@@ -187,13 +204,13 @@ with st.form("question_form", clear_on_submit=True):
                 st.session_state.docs, 
                 st.session_state.api_key,
             )
-            response = qa({"question": question})
+            response = qa({keys["question"]: question})
             st.session_state.responses.append(response)
             st.session_state.sources.append(retriever.get_relevant_documents(query=question))
         
-        st.info("A. " + st.session_state.responses[-1]["answer"])
-        st.info("Sources for answering (1): \n" + st.session_state.sources[-1][0].page_content)
-        st.info("Sources for answering (2): \n" + st.session_state.sources[-1][1].page_content)
+        st.info("A. " + st.session_state.responses[-1][keys["answer"]])
+        st.info("Sources for answering 1/4: \n" + st.session_state.sources[-1][0].page_content)
+        st.info("Sources for answering 2/4: \n" + st.session_state.sources[-1][1].page_content)
 
 with st.form("new_question", clear_on_submit=True):
     q_submitted = st.form_submit_button("Ask another question", disabled=not q_submitted)
