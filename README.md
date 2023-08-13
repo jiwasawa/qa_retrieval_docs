@@ -8,6 +8,8 @@ This repository provides a langchain/streamlit based app for question/answering 
 
 ## Preparation
 
+Python 3.10.12
+
 ```bash
 $ pip install -r requirements.txt
 ```
