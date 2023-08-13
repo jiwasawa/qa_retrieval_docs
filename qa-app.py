@@ -48,7 +48,7 @@ def summarize_doc(docs, openai_api_key):
     return summary
 
 
-def create_vectordb_for_docs(docs, openai_api_key, db="qdrant"):
+def create_vectordb_for_docs(docs, openai_api_key, dir_name, db="qdrant"):
     embedding = OpenAIEmbeddings(openai_api_key=openai_api_key)
     text_splitter = RecursiveCharacterTextSplitter(
         chunk_size = 1500,
@@ -60,13 +60,13 @@ def create_vectordb_for_docs(docs, openai_api_key, db="qdrant"):
             documents=splits, 
             embedding=embedding,
             path="./docs/qdrant",
-            collection_name="youtube_docs"
+            collection_name=dir_name,
         )
     elif db == "chroma":
         vectordb = Chroma.from_documents(
             documents=splits,
             embedding=embedding,
-            persist_directory="docs/chroma/",
+            persist_directory=f"docs/chroma/{dir_name}",
         )
     else:
         return
@@ -85,7 +85,10 @@ def init_llm(openai_api_key):
 
 def init_qa_retriever(docs, openai_api_key):
     llm = init_llm(openai_api_key)  # init gpt-3.5-turbo
-    vectordb = create_vectordb_for_docs(docs, openai_api_key)
+    dir_name = os.path.splitext(
+        os.path.basename(docs[0].metadata["source"])
+    )[0].replace(" ", "_")  # use filename as directory name
+    vectordb = create_vectordb_for_docs(docs, openai_api_key, dir_name)
     retriever=vectordb.as_retriever(search_type="mmr")
     memory = ConversationBufferMemory(
         memory_key="chat_history",
@@ -154,7 +157,11 @@ if "summary" in st.session_state:
     st.info("Summary: " + st.session_state.summary)
 else:
     with st.form("summary_form", clear_on_submit=False):
-        summary_required = st.form_submit_button("Summarize document", disabled=not((url or pdf) and st.session_state.api_key and ("docs" in st.session_state)))
+        summary_required = st.form_submit_button(
+            "Summarize document",
+            help="Generates summary (this can be skipped)",
+            disabled=not((url or pdf) and st.session_state.api_key and ("docs" in st.session_state)),
+        )
         if summary_required:
             with st.spinner("Summarizing... (might take a few minutes)"):
                 st.session_state.summary = summarize_doc(st.session_state.docs, st.session_state.api_key)
@@ -176,7 +183,10 @@ with st.form("question_form", clear_on_submit=True):
     q_submitted = st.form_submit_button("Ask question", disabled=not (question and ("docs" in st.session_state)))
     if q_submitted:
         with st.spinner("Asking question"):
-            qa, retriever = init_qa_retriever(st.session_state.docs, st.session_state.api_key)
+            qa, retriever = init_qa_retriever(
+                st.session_state.docs, 
+                st.session_state.api_key,
+            )
             response = qa({"question": question})
             st.session_state.responses.append(response)
             st.session_state.sources.append(retriever.get_relevant_documents(query=question))
