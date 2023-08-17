@@ -23,5 +23,5 @@ $ OPENAI_API_KEY=sk-xxxxxxxxxxxx
 ## Usage
 
 ```bash
-$ streamlit run qa-app.py
+$ python -m streamlit run qa-app.py
 ```
